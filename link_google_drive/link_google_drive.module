@@ -1,0 +1,902 @@
+<?php
+/**
+ * @file
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function link_google_drive_permission() {
+  $permissions = array(
+    'administer googledrive' => array(
+      'title' => t('Administer Google Drive settings'),
+    ),
+    'view googledrive preview' => array(
+      'title' => t('View Document\'s preview'),
+    ),
+    'sync googledrive documents' => array(
+      'title' => t('Synchronize own Google Drive documents'),
+    ),
+  );
+
+  return $permissions;
+}
+
+/**
+ * Implements hook_menu().
+ */
+function link_google_drive_menu() {
+  $items = array();
+
+  $items['oauth2callback'] = array(
+    'title' => 'Google Drive OAuth login',
+    'page callback' => 'link_google_drive_authenticate_page',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+    'file' => 'link_google_drive.pages.inc',
+  );
+
+  $items['admin/config/people/googledrive'] = array(
+    'title' => 'Google Drive authentication settings',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('link_google_drive_admin_auth_form'),
+    'file' => 'link_google_drive.pages.inc',
+    'access arguments' => array('administer googledrive'),
+  );
+
+  $items['googledrive/sync-all'] = array(
+    'title' => 'Google Drive Sync',
+    'page callback' => 'link_google_drive_synchronization_page',
+    'access arguments' => array('administer googledrive'),
+    'type' => MENU_CALLBACK,
+    'file' => 'link_google_drive.pages.inc',
+  );
+
+  $items['googledrive/sync/%user'] = array(
+    'title' => 'Google Drive Sync',
+    'page callback' => 'link_google_drive_synchronization_page',
+    'page arguments' => array(2),
+    'access arguments' => array('sync googledrive documents'),
+    'type' => MENU_CALLBACK,
+    'file' => 'link_google_drive.pages.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_user_load().
+ */
+function link_google_drive_user_load($users) {
+  $result = link_google_drive_get_users_credential();
+
+  foreach ($result as $uid => $record) {
+    $users[$uid]->googledrive = $record;
+  }
+}
+
+/**
+ * Implements hook_user_insert().
+ */
+function link_google_drive_user_insert(&$edit, $account, $category) {
+  if (!empty($account->googledrive)) {
+    $data = $account->googledrive;
+    $data['uid'] = $account->uid;
+    db_insert('google_oauth')
+      ->fields(_link_google_drive_prepare_db_data($data))
+      ->execute();
+  }
+}
+
+/**
+ * Implements hook_user_update().
+ */
+function link_google_drive_user_update(&$edit, $account, $category) {
+  if (empty($account->googledrive)) {
+    db_delete('google_oauth')
+      ->condition('uid', $account->uid)
+      ->execute();
+  }
+else {
+  $data = $account->googledrive;
+  unset($data['uid']);
+
+  db_merge('google_oauth')
+      ->key(array(
+        'uid' => $account->uid,
+   ))
+      ->fields(_link_google_drive_prepare_db_data($data))
+      ->execute();
+}
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function link_google_drive_block_info() {
+  $blocks = array();
+
+  $blocks['gdrive_login'] = array(
+    'info' => t('Google Drive Login'),
+    'cache' => DRUPAL_CACHE_PER_USER,
+  );
+
+  return $blocks;
+}
+
+/**
+ * Implements hook_libraries_info().
+ */
+function link_google_drive_libraries_info() {
+  $libraries = array();
+
+  $libraries['google-api-php-client'] = array(
+    'name' => 'Google API PHP Client',
+    'vendor url' => 'https://code.google.com/p/google-api-php-client/',
+    'download url' => 'https://code.google.com/p/google-api-php-client/downloads/detail?name=google-api-php-client-0.6.0.tar.gz&can=2&q=',
+    'path' => 'src',
+    'version callback' => 'googledrive_clientsdk_get_version',
+    'files' => array(
+      'php' => array(
+        'auth/Google_AssertionCredentials.php',
+        'auth/Google_Auth.php',
+        'auth/Google_AuthNone.php',
+        'auth/Google_LoginTicket.php',
+        'auth/Google_OAuth2.php',
+        'auth/Google_P12Signer.php',
+        'auth/Google_PemVerifier.php',
+        'auth/Google_Signer.php',
+        'auth/Google_Verifier.php',
+        'cache/Google_ApcCache.php',
+        'cache/Google_Cache.php',
+        'cache/Google_FileCache.php',
+        'cache/Google_MemcacheCache.php',
+        'config.php',
+        'contrib/Google_AdexchangebuyerService.php',
+        'contrib/Google_AdsensehostService.php',
+        'contrib/Google_AdsenseService.php',
+        'contrib/Google_AnalyticsService.php',
+        'contrib/Google_BigqueryService.php',
+        'contrib/Google_BloggerService.php',
+        'contrib/Google_BooksService.php',
+        'contrib/Google_CalendarService.php',
+        'contrib/Google_ComputeService.php',
+        'contrib/Google_CustomsearchService.php',
+        'contrib/Google_DriveService.php',
+        'contrib/Google_FreebaseService.php',
+        'contrib/Google_FusiontablesService.php',
+        'contrib/Google_GanService.php',
+        'contrib/Google_LatitudeService.php',
+        'contrib/Google_LicensingService.php',
+        'contrib/Google_ModeratorService.php',
+        'contrib/Google_Oauth2Service.php',
+        'contrib/Google_OrkutService.php',
+        'contrib/Google_PagespeedonlineService.php',
+        'contrib/Google_PlusMomentsService.php',
+        'contrib/Google_PlusService.php',
+        'contrib/Google_PredictionService.php',
+        'contrib/Google_ShoppingService.php',
+        'contrib/Google_SiteVerificationService.php',
+        'contrib/Google_StorageService.php',
+        'contrib/Google_TaskqueueService.php',
+        'contrib/Google_TasksService.php',
+        'contrib/Google_TranslateService.php',
+        'contrib/Google_UrlshortenerService.php',
+        'contrib/Google_WebfontsService.php',
+        'contrib/Google_YoutubeService.php',
+        'external/URITemplateParser.php',
+        'Google_Client.php',
+        'io/Google_CacheParser.php',
+        'io/Google_CurlIO.php',
+        'io/Google_HttpRequest.php',
+        'io/Google_IO.php',
+        'io/Google_REST.php',
+        'service/Google_BatchRequest.php',
+        'service/Google_MediaFileUpload.php',
+        'service/Google_Model.php',
+        'service/Google_Service.php',
+        'service/Google_ServiceResource.php',
+        'service/Google_Utils.php',
+      ),
+    ),
+  );
+
+  return $libraries;
+}
+
+/**
+ * Implements hook_field_extra_fields.
+ */
+function link_google_drive_field_extra_fields() {
+  $extra['node']['cloud_asset'] = array(
+    'display' => array(
+      'google_preview' => array(
+        'label' => t('Document\'s preview'),
+        'description' => t('Document\'s preview'),
+        'weight' => 0,
+      ),
+    ),
+  );
+
+  $extra['user']['user'] = array(
+    'display' => array(
+      'google_sync' => array(
+        'label' => t('Sync button'),
+        'description' => t('Button to start to synchronize the user\'s documents manually.'),
+        'weight' => 0,
+      ),
+    ),
+  );
+
+  return $extra;
+}
+/**
+ * Implements hook_cron_queue_info().
+ */
+function link_google_drive_cron_queue_info() {
+  $queues['link_google_drive'] = array(
+    'worker callback' => 'link_google_drive_callback',
+    'time' => 60,
+  );
+  return $queues;
+}
+
+/**
+ * Implements hook_cron().
+ */
+function link_google_drive_cron() {
+  if (variable_get('googledrive_auto_sync')) {
+    // Get all users' creadential.
+    $users_credentials = link_google_drive_get_users_credential();
+    $queue = DrupalQueue::get('link_google_drive');
+    foreach ($users_credentials as $credentials) {
+      $queue->createItem($credentials);
+    }
+  }
+}
+
+/**
+ * Synchronize a user's documents.
+ *
+ * @param $credentials
+ *   User's google credentials.
+ */
+function link_google_drive_callback($credentials) {
+  $handler = new GoogleDriveServiceHandler(
+    variable_get('googledrive_client_id'),
+    variable_get('googledrive_client_secret'),
+    variable_get('googledrive_redirect_uri')
+  );
+
+  $user_info = link_google_drive_get_userinfo($handler, $credentials);
+
+  $timestamp = link_google_drive_get_last_sync($credentials['uid']);
+
+  if ($timestamp) {
+	$sync_last = date('Y-m-d\TH:i:s', $timestamp);
+  }
+  else {
+	$sync_last = date('Y-m-d\TH:i:s', 0);
+  }
+  // Create conditions to select only the documents which are modified
+  // after the last synchronization, and the checked user is one of the owners
+  // of the documents.
+ $conditions = "'0B_WXpN36YzalNXRXSlBNc0xZY1k' in parents and modifiedDate > '{$sync_last}'";
+
+  $service = $handler->buildService($credentials);
+  $files = $handler->getFiles($service, $conditions);
+
+  if (count($files)) {
+    // Save new documents.
+    foreach ($files as $file) {
+	  $savedFile = array();
+      if (!link_google_drive_get_node_by_file_id($file->id)&&isset($file->exportLinks['text/html'])) {
+    	$contentGoogle = file_get_contents($file->exportLinks['text/html']);
+		$contentArray = explode("**StoryAttributes**",$contentGoogle);
+		$content = $contentArray[0].'</span></p></body></html>';
+		$storyAttributes = link_google_drive_get_story_attributes($contentArray[1]);
+		$summery = link_google_drive_get_summery($content);	
+		//get images
+		$contentImages = explode('<img',$content);
+		if(count($contentImages) > 1){ // Having images in articles
+				$image_Links = _link_google_drive_get_image_link($content);
+				//Save Images files	
+				if (count($image_Links)) {
+					$order = 0;
+					foreach($image_Links as $image){		
+						$link = _link_google_drive_resize_image($image['link'],600,$order);
+						if(isset($link['path'])&&isset($link['name'])) {
+							$savedFile[] = (link_google_drive_save_image($link['path'],$link['name'],$image,$storyAttributes));
+						}
+						$order++;
+					}
+
+				//create node images for story content
+				$nodePhotoID = link_google_drive_creat_node_photo($savedFile,$file->title,$storyAttributes);
+				}
+			$content = $contentImages[0].'</span></p></body></html>';
+		}		  
+		  $node = new stdClass();
+		  $node->title = $file->title;
+		  $node->body = array(
+		      LANGUAGE_NONE => array(
+		        0 => array(
+		          'value' => $content,
+		          'summary' => $summery,
+		          'format' => 'full_html',
+		        )
+		      ),
+		    );
+		  $node->type = "story";
+		  node_object_prepare($node); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().
+		  $node->language = LANGUAGE_NONE; // Or e.g. 'en' if locale is enabled
+		  $node->uid = $storyAttributes['editor'];
+		  $node->status = 1; //(1 or 0): published or not
+		  $node->promote = 1; //(1 or 0): promoted to front page
+		  $node->comment = 0; // 0 = comments disabled, 1 = read only, 2 = read/write
+		  /*********Term reference (taxonomy) field****/
+		  $node->field_subscription[$node->language][0]['tid'] = $storyAttributes['subscription'];
+		  $node->field_story_template[$node->language][0]['value'] = $storyAttributes['template'];
+		  $node->field_special_series[$node->language][0]['tid'] = $storyAttributes['special'];
+		  $node->field_breaking_news[$node->language][0]['is_breaking'] = $storyAttributes['breaking'];
+		  $node->field_breaking_news[$node->language][0]['expires'] = 3;
+		 $node->field_photo_gallery[$node->language][0]['nid'] = $nodePhotoID;
+
+		  foreach($storyAttributes['category'] as $category) {
+				$node->field_story_category[$node->language][]['tid'] = $category;
+		  }
+		/*******************domains*******************/		
+		  foreach($storyAttributes['domain'] as $domain) {
+				$node->domains[$domain] = $domain;			
+		  }
+
+		  		$node->domain_site = 1;
+				$node->domain_source = 1;
+		  $node = node_submit($node); // Prepare node for saving
+		  node_save($node);
+      }
+    }
+  }
+//save the time of updating
+  db_merge('google_data_sync')
+    ->key(array('uid' => $credentials['uid']))
+    ->fields(array('last_sync' => REQUEST_TIME))
+    ->execute();
+}
+
+/**
+* create a node photo gallery
+*return nid just created
+ */
+function link_google_drive_creat_node_photo($savedFile,$title,$storyAttributes) {	 
+	$node = new stdClass();
+	  $node->title = $title;
+	  $node->type = "photo_gallery";
+	  node_object_prepare($node); // Sets some defaults. Invokes hook_prepare() and hook_node_prepare().
+	  $node->language = LANGUAGE_NONE; // Or e.g. 'en' if locale is enabled
+	  $node->uid = $storyAttributes['editor'];
+	  $node->status = 0; //(1 or 0): published or not
+	  $node->promote = 0; //(1 or 0): promoted to front page
+	  $node->comment = 0; // 0 = comments disabled, 1 = read only, 2 = read/write
+	  foreach($savedFile as $file) {
+			$node->field_photos[LANGUAGE_NONE][]['fid'] = $file->fid;		
+	   }
+
+	 /*******************domains*******************/		
+	   foreach($storyAttributes['domain'] as $domain) {
+			$node->domains[$domain] = $domain;			
+		}
+	  $node->domain_site = 1;
+	  $node->domain_source = 1;
+	  $node = node_submit($node);
+	  node_save($node);
+	  return $node->nid;
+}
+
+
+
+/**
+ * Dummy version callback for the Google Client SDK.
+ *
+ * Unfortunately, there is no way to determine the version from the source code.
+ */
+function link_google_drive_clientsdk_get_version() {
+  return '1.0';
+}
+
+/**
+ * Filters data from the user's googledrive property before saving.
+ *
+ * @param $data
+ *   $user->googledrive
+ *
+ * @return array
+ *   Filtered array.
+ */
+function _link_google_drive_prepare_db_data($data) {
+  $tabledata = drupal_get_schema('google_oauth');
+  return array_intersect_key($data, $tabledata['fields']);
+}
+
+/**
+ * Return all users' google credentials, whose have one.
+ *
+ * @param mixed $uid
+ *  user id of an account.
+ *
+ * @return array
+ *  An array of users' credentials indexed by user id.
+ */
+function link_google_drive_get_users_credential($uid = NULL) {
+  $credentials = array();
+
+  $query = db_select('google_oauth', 'go')
+    ->fields('go');
+
+  if (isset($uid)) {
+    $query->condition('uid', $uid);
+  }
+
+  $result = $query->execute();
+
+  while ($row = $result->fetch()) {
+    $credentials[$row->uid] = array(
+      'uid' => $row->uid,
+      'access_token' => $row->access_token,
+      'token_type' => $row->token_type,
+      'id_token' => $row->id_token,
+      'refresh_token' => $row->refresh_token,
+      'created' => $row->created,
+      'expires_in' => $row->expires_in,
+      'client_id' => variable_get('googledrive_client_id'),
+      'client_secret' => variable_get('googledrive_client_secret'),
+    );
+  }
+
+  return $credentials;
+}
+
+/**
+ * Return the proper node based on the given file id.
+ *
+ * @param $file_id
+ *   The google file id.
+ * @return bool|mixed|null
+ *   The proper node object, or a NULL.
+ */
+function link_google_drive_get_node_by_file_id($file_id) {
+  $query = db_select('node', 'n');
+  $query->leftJoin('field_data_field_file_id', 'ffi', 'n.nid=ffi.entity_id');
+  $query->fields('n', array('nid'));
+  $query->condition('n.type', 'cloud_asset')
+    ->condition('ffi.field_file_id_value', $file_id)
+    ->range(0, 1);
+  $result = $query->execute()->fetchAssoc();
+
+  if ($result) {
+    $node = node_load($result['nid']);
+  }
+
+  return isset($node) ? $node : NULL;
+}
+
+/**
+ * Implements hook_preprocess_hook().
+ *
+ * Changing the submitted by user name to the name of the google drive account.
+ */
+function link_google_drive_preprocess_node(&$variables) {
+  if ($variables['type'] == 'cloud_asset') {
+    $author = user_load($variables['uid']);
+
+    $handler = new GoogleDriveServiceHandler(
+      variable_get('googledrive_client_id'),
+      variable_get('googledrive_client_secret'),
+      variable_get('googledrive_redirect_uri')
+    );
+
+    $credentials = link_google_drive_get_users_credential($author->uid);
+
+    if ($credentials) {
+      $credentials = reset($credentials);
+      $user_info = link_google_drive_get_userinfo($handler, $credentials);
+
+      $author->name = $user_info['name'];
+      $name = theme('username', array('account' => $author));
+
+      $variables['submitted'] = t('Submitted by !username on !datetime',
+        array('!username' => $name, '!datetime' => $variables['date']));
+    }
+  }
+}
+
+/**
+ * Return The Google account user's information.
+ *
+ * @param $credentials
+ * @return array
+ */
+function link_google_drive_get_userinfo($handler, $credentials) {
+  $users_info = &drupal_static(__FUNCTION__);
+
+  if ($users_info && isset($users_info[$credentials['uid']])) {
+    $user_info = $users_info[$credentials['uid']];
+  }
+  else {
+    // Get user info from cache, if it is available, or send a request to google.
+    $cache = cache_get("googledrive:userinfo:{$credentials['uid']}");
+
+    if (!$cache) {
+      $user_info = $handler->GetUserInfo($credentials);
+      cache_set("googledrive:userinfo:{$credentials['uid']}", $user_info, 'cache', time() + $credentials['expires_in']);
+    }
+    else {
+      $user_info = $cache->data;
+    }
+    $users_info[$credentials['uid']] = $user_info;
+  }
+
+  return $user_info;
+}
+
+/**
+ * Return The Google account user's information.
+ *
+ * @param $credentials
+ * @return object
+ *    Google file object.
+ */
+function link_google_drive_get_file($credentials, $file_id) {
+  $files = &drupal_static(__FUNCTION__);
+
+  if (isset($files[$file_id])) {
+    $file = $files[$file_id];
+  }
+  else {
+    // Get user info from cache, if it is available, or send a request to google.
+    $cache = cache_get("goggledrive:file:{$file_id}");
+
+    if (!$cache) {
+      $handler = new GoogleDriveServiceHandler(
+        variable_get('googledrive_client_id'),
+        variable_get('googledrive_client_secret'),
+        variable_get('googledrive_redirect_uri')
+      );
+
+      $service = $handler->buildService($credentials);
+      $file = $handler->getFile($service, $file_id);
+
+      cache_set("googledrive:files:{$file_id}", $file, 'cache', CACHE_TEMPORARY);
+    }
+    else {
+      $file = $cache->data;
+    }
+
+    $files[$file_id] = $file;
+  }
+
+  return $file;
+}
+
+/**
+ * Get the date of the last sync time.
+ *
+ * @param $uid
+ * @return null
+ */
+function link_google_drive_get_last_sync($uid) {
+  $result = db_select('google_data_sync', 'gds')
+    ->fields('gds', array('last_sync'))
+    ->condition('uid', $uid)
+    ->execute()->fetchAssoc();
+
+  return isset($result['last_sync']) ? $result['last_sync'] : NULL;
+}
+
+/*
+* @input content html
+*return array image links with captions;
+*/
+function _link_google_drive_get_image_link($content){
+	$images = explode('<img',$content);
+	$arrayCount = count($images);
+	$arrayLink =  array();
+	$i = 0;
+	while($i<$arrayCount) {
+	  $link = explode('src="https://',$images[$i]);
+		$imageArray = explode('>',strip_tags($link[1]));
+		if(isset($imageArray[0])&&$imageArray[0]!=''&&$i>=1) {
+			$notSellArray = explode('border: 0.00px',$images[$i-1]);
+			if(isset($notSellArray [1])){
+				$tmpLink['notforsell'] = 0;	
+			}else {
+				$tmpLink['notforsell'] = 1;	
+			}
+			$imageLink=explode('"',$imageArray[0]);
+			$tmpLink['link'] = 'https://'.$imageLink[0];
+			$tmpLink['caption'] = $imageArray[1];
+			$arrayLink[] = $tmpLink;
+		}		
+	  $i++;
+	}
+	return $arrayLink;
+}
+/*
+* @input content html
+*return content html with replace image from db
+*/
+function _link_google_drive_replace_image_link($content){
+	
+}
+/*
+* @input image 
+*return resized image link
+*/
+function _link_google_drive_resize_image($image,$imgDimsMax=600,$order) {
+	$fileImageInfo = array();
+	$imageName = 'gimage-'.time().$order.'.jpg';
+	$img = file_get_contents($image);
+	$im = imagecreatefromstring($img);
+	$width = imagesx($im);
+	$height = imagesy($im);
+	// set the default dimensions.
+	$imgWidth   = $imgDimsMax;
+	$imgHeight  = $imgDimsMax;
+	if ($width <= $imgDimsMax) {
+		$imgWidth   = $width;
+        $imgHeight  = $height;
+	} else {
+	    if( $width >= $height ) {
+	       // set $imgWidth to $imgDimsMax and resize $imgHeight proportionately
+	        $aspectRatio    = $imgWidth / $width;
+	        $imgHeight      = floor ( $height * $aspectRatio );
+	    } else if( $width < $height ) {
+	        // set $imgHeight to $imgDimsMax and resize $imgWidth proportionately
+	        $aspectRatio    = $imgHeight / $height;
+	        $imgWidth       = floor ( $width * $aspectRatio );
+		}
+	}
+
+	$newwidth = $imgWidth;
+
+	$newheight = $imgHeight;
+
+	$thumb = imagecreatetruecolor($newwidth, $newheight);
+
+	imagecopyresized($thumb, $im, 0, 0, 0, 0, $newwidth, $newheight, $width, $height);
+	$path = variable_get('file_public_path', conf_path() . '/files');
+	$imagePath_1 = $path.'/'.$imageName;
+	$imagePath_2 = $path.'/styles/story_bg/public/'.$imageName;
+	if(imagejpeg($thumb,$imagePath_1)&&imagejpeg($thumb,$imagePath_2)){ //save image as jpg
+		imagedestroy($thumb); 
+		imagedestroy($im);
+		$fileImageInfo['name'] = $imageName;
+		$fileImageInfo['path'] = $imagePath_1;
+		return $fileImageInfo;
+	}else {
+		imagedestroy($thumb); 
+		imagedestroy($im);
+		return $fileImageInfo;
+	}
+	
+}
+
+/**
+* Save image file to db
+*return array of saved file info
+*/
+function link_google_drive_save_image($uri, $fileName, $image, $storyAttributes) {
+	$file = new stdClass;
+	$file->uid = $storyAttributes['editor'];
+	$file->filename = $fileName;
+	$file->uri = 'public://'.$fileName;
+	$file->filemime = 'image/jpeg';
+	$file->filesize = filesize($uri);
+	$file->status = 1;
+	$file->field_caption['und'][0]['value'] = $image['caption'];
+	$file->field_not_for_sale['und'][0]['value'] = $image['notforsell'];
+	return file_save($file);
+}
+/**
+* Get summery of a node
+*@imput content of file
+*return string
+*/
+function link_google_drive_get_summery($content) {
+	$paraArray = explode('<p',$content);
+	$summery = '';
+	$containImage = explode('<img',$paraArray[1]);
+	if(!isset($containImage[1])){
+		$para = strip_tags('<p'.$paraArray[1]);
+		$summery = link_google_drive_character_limiter($para,$n = 500, $end_char = '&#8230;');
+		$summery = '<p>'.$summery.'</p>';
+	}
+	/*
+	if(preg_match($pattern,$paraArray[1],$math,PREG_OFFSET_CAPTURE) == 0) { // summery connot contain image
+		$summery = '<p '.$paraArray[1];
+	}
+	*/	
+	return $summery;
+}
+/**
+* Character Limiter
+*
+* Limits the string based on the character count.  Preserves complete words
+* so the character count may not be exactly as specified.
+*
+* @access   public
+* @param    string
+* @param    integer
+* @param    string  the end character. Usually an ellipsis
+* @return   string
+*/
+
+function link_google_drive_character_limiter($str, $n = 500, $end_char = '&#8230;')
+{
+    if (strlen($str) < $n)
+    {
+        return $str;
+    }
+
+    $str = preg_replace("/\s+/", ' ', str_replace(array("\r\n", "\r", "\n"), ' ', $str));
+
+    if (strlen($str) <= $n)
+    {
+        return $str;
+    }
+
+    $out = "";
+    foreach (explode(' ', trim($str)) as $val)
+    {
+        $out .= $val.' ';
+
+        if (strlen($out) >= $n)
+        {
+            $out = trim($out);
+            return (strlen($out) == strlen($str)) ? $out : $out.$end_char;
+        }
+    }
+ }
+/*
+* Get story attributes from content;
+*/
+function link_google_drive_get_story_attributes($storryAttributes){
+	$string = "'".$storryAttributes."'";	
+	$data = array();
+	$domainArray =  array(
+		'auburnjournal' => 1,
+		'thepresstribune' => 6,
+		'theloomisnews' => 3,
+		'colfaxrecord' => 2,
+		'placerherald' => 4,
+		'lincolnnewsmessenger' => 5,
+		'folsomtelegraph' => 7,
+		'edhtelegraph' => 8,
+		'placersports' => 9,
+		'folsomlakeentertainer' => 10,
+		'foothillsentertainer' => 11,
+		'granitebayview' => 12,
+	);
+
+	$categoryArray = array(
+		'clubs' => 100861,
+		'court' => 100984,
+		'election' => 99693,
+		'entertainement' => 101048,
+		'fire' => 100348,
+		'health' => 100826,
+		'letters' => 100252,
+		'pets' => 99581,
+		'placer' => 99965,
+		'transportation' => 100271,
+		'veterans' => 99564,
+		'weather' => 100635,
+		'news' => 2,
+		'sports' => 3,
+		'business' => 11,
+		'education' => 4,
+		'politics' => 5,
+		'crime' => 22,
+		'history' => 59,
+		'arts-entertain' => 16,
+		'home-garden' => 14,
+		'faith' => 19,
+		'food-wine' => 17,
+		'health-fitness' => 18,
+		'milestones' => 20,
+		'people' => 15,
+		'seniors' => 21,
+		'fall-boys' => 95,
+		'winter-girls' => 100,
+		'winter-boys' => 99,
+		'spring-girls' => 98,
+		'spring-boys' => 97,
+		'fall-girls' => 96,
+		'summer' => 101,
+		'motorsports' => 92,
+		'outdoor' => 93,
+		'league-regis' => 90,
+		'league-baseball' => 91,
+		'camps-clinics' => 88,
+		'collegiate' => 89,
+		'youth-baseball' => 104,
+		'youth-basketball' => 107,
+		'youth-football' => 109,
+		'youth-golf' => 106,
+		'youth-soccer' => 108,
+		'youth-softball' => 109,
+		'middle-schools' => 103,
+		'other-youth' => 110,
+		'editorials' => 12,
+		'columnists' => 13,
+	);
+	$specialArray = array(
+		'12-days-of-giving' => 100117,
+		'blitz' => 110534,
+		'newsmaker' => 25,
+		'noon-hour-update' => 24,
+	);
+	/****************Subscription*********************/
+	$subscription = '<span>default</span>';
+	if(strpos($string, $subscription)) {
+		$data['subscription'] = 102909;
+	}else{
+		$data['subscription'] = 102910;
+	}
+	/****************Template*********************/
+	$template = '<span>Default Story Template</span>';
+	if(strpos($string, $template)) {
+		$data['template'] = 'default';
+	}else{
+		$data['template'] = 'wildart';
+	}
+	/****************Breaking news*********************/
+	$breaking = '<span>false</span>';
+	if(strpos($string, $breaking)) {
+		$data['breaking'] = 0;
+	}else{
+		$data['breaking'] = 1;
+	}
+	$editorString = explode('<span>Editor ID:</span>',$string);
+	/****************Editor ID*********************/
+	if(isset($editorString[1])){
+		$subStringEditor = explode('<span>',$editorString[1]);
+		if(isset($subStringEditor[1])){
+			$editor = explode('</span>',$subStringEditor[1]);
+			if(isset($editor[0]) && is_numeric($editor[0])){
+				$editorID = $editor[0]; 
+			}else{
+				$editorID = 1;
+			}
+		}
+		$data['editor']	= $editorID;
+	}
+	/*****************Special Series*******************/
+	$specialString = explode('<span>Special Series:</span>',$string);
+	if(isset($specialString[1])){
+		$subStringSpecial = explode('<span>',$specialString[1]);
+		if(isset($subStringSpecial[1])){
+			$special = explode('</span>',$subStringSpecial[1]);
+			$data['special'] = $specialArray[$special[0]];
+		}	
+	}
+	/****get domain***********************************/
+	$domainString = explode('<span>Domain:</span>', $string);
+	if(isset($domainString[1])){
+		$domains = explode('|',$domainString[1]);
+		for ($i = 1; $i < count($domains) -1; $i++) {
+		   $data['domain'][] = $domainArray[$domains[$i]];
+		}	
+	}
+	/*********get category***************************/
+	if(isset($domainString[0])){
+		$categoryString = explode('<span>Category:</span>',$domainString[0]);
+		if(isset($categoryString[1])){
+			$category = explode('|',$categoryString[1]);
+			for ($i = 1; $i < count($category) -1; $i++) {
+			   $data['category'][] = $categoryArray[$category[$i]];
+			}
+		}	
+	  }
+	return $data;
+}

@@ -1,0 +1,13 @@
+name = Link Google Drive
+description = Adds Google Drive integration to Drupal.
+core = 7.x
+
+files[] = GoogleDriveAuthHandler.class.inc
+files[] = GoogleDriveServiceHandler.class.inc
+
+dependencies[] = libraries
+dependencies[] = entity
+
+core = "7.x"
+
+
